@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 
 <head>
     <meta charset="utf-8" />
@@ -325,8 +325,8 @@
 
             // init i18next with inline resources
             try{
-                const savedLang = (window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorLang')) || 'ru';
-                i18next.init({ lng: savedLang, fallbackLng: 'ru', resources: I18N_RES }).then(applyTranslations);
+                const savedLang = (window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorLang')) || 'en';
+                i18next.init({ lng: savedLang, fallbackLng: 'en', resources: I18N_RES }).then(applyTranslations);
                 const langSel = document.getElementById('langSelect');
                 if (langSel){
                     langSel.value = savedLang;
@@ -492,7 +492,9 @@
                     warn.textContent = i18next.t('warp.noticeWarn');
                     const cmdDiv = document.createElement('div');
                     cmdDiv.style.cssText = 'margin-top:6px;color:#2b2b2b';
-                    cmdDiv.textContent = savedHost ? i18next.t('warp.runCmd', { cmd }) : i18next.t('warp.runCmdWithHint', { cmd });
+                    cmdDiv.textContent = savedHost
+                        ? i18next.t('warp.runCmd', { cmd, interpolation: { escapeValue: false } })
+                        : i18next.t('warp.runCmdWithHint', { cmd, interpolation: { escapeValue: false } });
                     const explain = document.createElement('div');
                     explain.style.cssText = 'font-size:12px;color:#444;margin-top:8px;line-height:1.4';
                     explain.textContent = i18next.t('warp.explain');
