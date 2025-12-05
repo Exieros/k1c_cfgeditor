@@ -1,0 +1,1234 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Редактор</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/monokai.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/properties/properties.min.js"></script>
+    <style>
+        html, body { height: 100%; }
+        body {
+            display: flex;
+            flex-direction: column;
+            background: #121212;
+            color: #ddd;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            overflow: hidden;
+        }
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #0f0f0f;
+            border-bottom: 1px solid #222;
+        }
+        .title {
+            font-size: 16px;
+            color: #fff;
+        }
+        .steps {
+            padding: 3px 20px;
+            display: flex;
+            gap: 3px;
+            flex-direction: column;
+            background: #0b0b0b;
+            font-size: 11px;
+        }
+        .step {
+            display: flex;
+            justify-content: space-between;
+            gap: 3px;
+            padding: 3px;
+        }
+        .label {
+            color: #bbb;
+        }
+        .status {
+            width: 180px;
+            text-align: right;
+            color: #888;
+        }
+        #editorWrap {
+            padding: 10px;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .CodeMirror {
+            height: 100%;
+            background: #1e1e1e;
+            color: #dcdcdc;
+        }
+        .controls {
+            padding: 8px 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        button {
+            background: #2f2f2f;
+            color: #fff;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button[disabled] {
+            opacity: 0.5;
+            cursor: default;
+        }
+        .notice {
+            margin: 12px 16px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: #fffbdd;
+            border: 1px solid #f0e7a8;
+            color: #2b2b2b;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .notice .text { flex: 1; }
+        .notice button { padding:6px 10px; border-radius:6px; border:0; cursor:pointer }
+    </style>
+    <style>
+        /* Helpers for visibility and overlays */
+        .hidden { display: none !important; }
+        .overlayFlex { display: flex !important; }
+    </style>
+    <style>
+        #meshModalOverlay {
+            position: fixed;
+            left: 0; right: 0; top: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        #meshModal {
+            background: #111;
+            color: #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            width: min(820px, calc(100% - 40px));
+            box-shadow: 0 6px 30px rgba(0,0,0,0.6);
+        }
+        #meshModalHeader { display:flex; align-items:center; gap:8px; margin-bottom:8px }
+        #meshCanvas { width:100%; height:420px; background: rgba(0,0,0,0.1); display:block }
+        #meshLegend { font-size:12px; color:#bbb; margin-top:8px }
+        #meshClose { margin-left:auto }
+    </style>
+</head>
+
+<body>
+    <div class="topbar">
+        <div class="title">Редактор <span id="cfgTitleName">printer.cfg</span> — <span id="hostDisplay"></span> <span id="wsStatus" style="margin-left:12px;font-size:12px;color:#888">WS: нет</span></div>
+        <div style="flex:1"></div>
+        <select id="cfgSelect" style="background:#1b1b1b;color:#ddd;border-radius:6px;padding:6px 8px;border:1px solid #333;margin-right:8px"></select>
+        <button id="btnBedMesh" title="Извлечь bed_mesh">Bed mesh</button>
+        <button id="btnFirmwareRestart" title="Перезапустить прошивку">Firmware restart</button>
+        <button id="btnSave" disabled>Save</button>
+    </div>
+
+    <div id="warpNotice" class="notice" style="display:none; background:#fff2f0; border-color:#f2c6c0; color:#2b2b2b; position:fixed; left:16px; right:16px; top:64px; z-index:100000">
+        <div class="text">
+            <strong>Проблема CORS:</strong>
+            <div id="warpNoticeText" style="margin-top:6px;color:#2b2b2b">Прокси CORS (warp-cors) недоступен — это может блокировать загрузку на принтер.</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+            <button id="btnCopyWarpCmd">Скопировать команду</button>
+            <button id="btnDismissWarp">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="meshModalOverlay">
+        <div id="meshModal">
+            <div id="meshModalHeader">
+                <strong>Bed mesh</strong>
+                <button id="meshClose">Закрыть</button>
+            </div>
+            <canvas id="meshCanvas" width="800" height="420"></canvas>
+            <div id="meshLegend">Bounds: <span id="meshBounds"></span></div>
+            <div id="meshTooltip" style="position:absolute;display:none;padding:6px 8px;background:rgba(0,0,0,0.8);color:#fff;border-radius:6px;font-size:12px;pointer-events:none;z-index:10000"></div>
+        </div>
+    </div>
+
+    <div id="ipPrompt" class="notice" style="display:none">
+        <div class="text">
+            <strong>Введите IP принтера:</strong>
+            <input id="printerIpInput" type="text" placeholder="192.168.1.100" style="margin-left:8px;padding:6px;border-radius:4px;border:1px solid #ccc" />
+        </div>
+        <div style="display:flex;gap:8px">
+            <button id="btnUseIp">Использовать</button>
+            <button id="btnDismissIp">Закрыть</button>
+        </div>
+    </div>
+
+    <div class="steps">
+        <div class="step" data-step="warp">
+            <div class="label">1. Проверка warp-cors</div>
+            <div class="status" id="st1">ожидание</div>
+        </div>
+        <div class="step" data-step="rename">
+            <div class="label">2. cfg → gcode (ws renameprt hack)</div>
+            <div class="status" id="st2">ожидание</div>
+        </div>
+        <div class="step" data-step="download">
+            <div class="label" id="stepDownloadLabel">3. Загрузка /downloads/gcode/*.cfg.gcode</div>
+            <div class="status" id="st3">ожидание</div>
+        </div>
+        <div class="step" data-step="restore">
+            <div class="label">4. gcode → cfg (ws renameprt hack)</div>
+            <div class="status" id="st4">ожидание</div>
+        </div>
+    </div>
+
+    <div id="editorWrap">
+        <textarea id="cfg" style="display:none;background:#1e1e1e;color:#dcdcdc"></textarea>
+        <div id="placeholder" style="padding:24px;color:#999">Файл будет показан здесь после успешной загрузки</div>
+        <div id="loadingOverlay" class="hidden" style="position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center;color:#fff;font-size:14px">Загрузка...</div>
+        <div id="fwOverlay" class="hidden" style="position:fixed;left:0;right:0;top:0;bottom:0;background:rgba(0,0,0,0.85);z-index:99999;align-items:center;justify-content:center;color:#fff;font-size:16px;padding:20px;text-align:center">Klipper перезапускается — ожидание загрузки...</div>
+        <div id="toast" class="hidden" style="position:fixed;left:50%;transform:translateX(-50%);bottom:20px;background:rgba(20,20,20,0.9);color:#fff;padding:8px 12px;border-radius:6px;font-size:13px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.4)"></div>
+    </div>
+
+    <script>
+        (function () {
+            // ===== Helpers & Config =====
+            // Константы конфигурации сети/таймингов
+            const WARP_PORT = 8182;
+            const CONST = {
+                WS_PORT: 9999,
+                WARP_PROXY: `http://127.0.0.1:${WARP_PORT}/`,
+                POLL_ATTEMPTS: 8,
+                POLL_INITIAL_DELAY: 800,
+                WS_OPEN_TIMEOUT: 5000,
+                RESTART_TIMEOUT: 120000
+            };
+            // List of available configs (user-provided). Each entry has {name,path}
+            const CFG_LIST = [
+                { name: 'printer.cfg', path: '/usr/data/printer_data/config/' },
+                { name: 'factory_printer.cfg', path: '/usr/data/printer_data/config/' }
+            ];
+
+            // Selected config name (persisted)
+            let selectedCfgName = null;
+
+            // WS endpoint — printers in this project use ws://IP:9999
+            const WS_PORT = CONST.WS_PORT;
+
+            // Helper: find config object
+            /** Возвращает выбранный конфиг из CFG_LIST */
+            function getCfgObj() {
+                if (!selectedCfgName) selectedCfgName = (window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorSelectedCfg')) || CFG_LIST[0].name;
+                return CFG_LIST.find(c => c.name === selectedCfgName) || CFG_LIST[0];
+            }
+
+            /** Формирует имя gcode файла из имени cfg */
+            function gcodeFilename(cfgName) { return cfgName + '.gcode'; }
+
+            // Compute paths used for WS rename (cfg -> gcode) and downloads
+            /** Пары путей для переименования cfg↔gcode по ws-хаку */
+            function computePathsFor(cfg) {
+                const from = `/usr/data/printer_data/gcodes/../../../..${cfg.path}/${cfg.name}`;
+                const to = `/usr/data/printer_data/gcodes/../gcodes/${cfg.name}.gcode`;
+                return { from, to };
+            }
+
+            let host = null; // принтер IP должен быть задан пользователем
+            // попытка взять сохранённый IP из localStorage
+            try{
+                const saved = window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorPrinterHost');
+                if (saved && saved.trim()) host = saved.trim();
+            }catch(e){}
+            document.getElementById('hostDisplay').textContent = host || '—';
+
+            const st1 = document.getElementById('st1');
+            const st2 = document.getElementById('st2');
+            const st3 = document.getElementById('st3');
+            const st4 = document.getElementById('st4');
+            const btnSave = document.getElementById('btnSave');
+            const wsStatusEl = document.getElementById('wsStatus');
+            const placeholder = document.getElementById('placeholder');
+            const stepDownloadLabel = document.getElementById('stepDownloadLabel');
+            const warpCorsProxy = CONST.WARP_PROXY;
+
+            let cm = null; // CodeMirror instance
+            let fileText = '';
+            let ws = null;
+            let wsOpen = false;
+            let wsReconnectAttempts = 0;
+
+            function showWarpNotice(){
+                try{
+                    const el = document.getElementById('warpNotice');
+                    const text = document.getElementById('warpNoticeText');
+                    const btnCopy = document.getElementById('btnCopyWarpCmd');
+                    const btnDismiss = document.getElementById('btnDismissWarp');
+                    if (!el || !text || !btnCopy || !btnDismiss) return;
+
+                    // If no modal overlays are currently shown, place notice after IP prompt block
+                    try {
+                        const meshOverlay = document.getElementById('meshModalOverlay');
+                        const fwOverlay = document.getElementById('fwOverlay');
+                        const ipPrompt = document.getElementById('ipPrompt');
+                        const hasModal = (meshOverlay && meshOverlay.style.display !== 'none' && meshOverlay.style.display !== '') ||
+                                         (fwOverlay && !fwOverlay.classList.contains('hidden'));
+                        if (!hasModal && ipPrompt && ipPrompt.parentElement) {
+                            const parent = ipPrompt.parentElement;
+                            // insert notice right after ipPrompt in the DOM tree
+                            if (el.nextSibling !== ipPrompt.nextSibling) parent.insertBefore(el, ipPrompt.nextSibling);
+                            // convert from fixed to inline flow when placed after IP prompt
+                            el.style.position = 'static';
+                            el.style.left = '';
+                            el.style.right = '';
+                            el.style.top = '';
+                            el.style.zIndex = '';
+                            el.style.marginTop = '8px';
+                        } else {
+                            // keep floating fixed position when not near IP prompt
+                            el.style.position = 'fixed';
+                            el.style.left = '16px';
+                            el.style.right = '16px';
+                            el.style.top = '64px';
+                            el.style.zIndex = '100000';
+                        }
+                    } catch (posErr) { /* ignore positioning errors */ }
+
+                    let savedHost = null;
+                    try{ savedHost = window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorPrinterHost'); }catch(e){}
+                    const hostForCmd = savedHost || '<printer-ip>';
+                    const cmd = `warp-cors.exe --port ${WARP_PORT} --hostname ${hostForCmd}`;
+
+                    text.innerHTML = '';
+                    const warn = document.createElement('div');
+                    warn.textContent = 'Прокси CORS (warp-cors) недоступен — это может блокировать загрузку на принтер.';
+                    const cmdDiv = document.createElement('div');
+                    cmdDiv.style.cssText = 'margin-top:6px;color:#2b2b2b';
+                    cmdDiv.textContent = savedHost ? `Запустите: ${cmd}` : `Запустите: ${cmd} (замените <printer-ip> на IP вашего принтера)`;
+                    const explain = document.createElement('div');
+                    explain.style.cssText = 'font-size:12px;color:#444;margin-top:8px;line-height:1.4';
+                    explain.textContent = 'Почему возникает ошибка: браузер блокирует запросы к принтеру (другой хост) без специальных заголовков. Небольшая утилита-прокси временно добавляет их и не требует установки.';
+                    const linkWrap = document.createElement('div');
+                    linkWrap.style.cssText = 'margin-top:6px;font-size:12px';
+                    const a = document.createElement('a');
+                    a.href = 'https://github.com/Bassetts/warp-cors/releases/latest';
+                    a.textContent = 'Скачать warp-cors (последний релиз)';
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    linkWrap.appendChild(a);
+                    text.appendChild(warn);
+                    text.appendChild(cmdDiv);
+                    text.appendChild(explain);
+                    text.appendChild(linkWrap);
+
+                    btnCopy.onclick = async ()=>{
+                        try{
+                            await navigator.clipboard.writeText(cmd);
+                            showToast('Команда скопирована');
+                        }catch(e){
+                            const ta = document.createElement('textarea');
+                            ta.value = cmd;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            try{ document.execCommand('copy'); showToast('Команда скопирована'); }
+                            catch(err){ alert('Не удалось скопировать автоматически, скопируйте вручную: ' + cmd); }
+                            document.body.removeChild(ta);
+                        }
+                    };
+                    btnDismiss.onclick = ()=>{ el.style.display = 'none'; };
+                    el.style.display = '';
+                }catch(e){ console.warn('showWarpNotice failed', e); }
+            }
+
+            function hideWarpNotice(){
+                try{
+                    const el = document.getElementById('warpNotice');
+                    if (el) el.style.display = 'none';
+                }catch(e){ console.warn('hideWarpNotice failed', e); }
+            }
+
+            async function ensureWarpProxyAvailability({ showNoticeOnFail = true, timeoutMs = 1200 } = {}){
+                if (!warpCorsProxy) return true;
+                const controller = ('AbortController' in window) ? new AbortController() : null;
+                const signal = controller ? controller.signal : undefined;
+                const timer = setTimeout(()=>{ if (controller) controller.abort(); }, timeoutMs);
+                try{
+                    await fetch(warpCorsProxy, { method: 'GET', mode: 'no-cors', cache: 'no-store', signal });
+                    hideWarpNotice();
+                    return true;
+                }catch(e){
+                    if (showNoticeOnFail) showWarpNotice();
+                    return false;
+                }finally{
+                    clearTimeout(timer);
+                }
+            }
+
+            ensureWarpProxyAvailability({ showNoticeOnFail: true }).catch(e => console.warn('initial warp-cors probe failed', e));
+
+            /** Устанавливает текстовый статус шага */
+            function setStatus(el, text, ok) {
+                if (!el) return;
+                el.textContent = text;
+                el.style.color = ok == null ? '#888' : (ok ? '#8f8' : '#f88');
+            }
+            /** Обёртка для статусов шагов 1..4 */
+            function setStepStatus(stepIndex, text, ok){
+                // stepIndex: 1..4
+                const el = stepIndex === 1 ? st1 : (stepIndex === 2 ? st2 : (stepIndex === 3 ? st3 : (stepIndex === 4 ? st4 : null)));
+                setStatus(el, text, ok);
+            }
+            /** Возвращает http/https в зависимости от протокола страницы */
+            function httpProto(){ return (location.protocol === 'https:') ? 'https:' : 'http:'; }
+            /** Добавляет CORS‑прокси при наличии */
+            function withProxy(url){ return (warpCorsProxy ? warpCorsProxy : '') + url; }
+            // Unified HTTP fetch helper with consistent logging and errors
+            async function httpFetch(url, options = {}){
+                try{
+                    const r = await fetch(url, options);
+                    const bodyText = await r.text().catch(()=> '');
+                    if (!r.ok){
+                        console.warn('HTTP', options.method||'GET', url, '->', r.status, bodyText.slice(0,200));
+                        const err = new Error('HTTP '+r.status);
+                        err.status = r.status;
+                        err.body = bodyText;
+                        throw err;
+                    }
+                    return { ok: true, status: r.status, body: bodyText };
+                }catch(e){
+                    console.warn('HTTP error', options.method||'GET', url, e);
+                    return { ok: false, status: e.status || 0, body: e.body || String(e) };
+                }
+            }
+
+            /** Показывает краткое тост‑уведомление внизу экрана */
+            function showToast(msg, ms = 2500){
+                try{
+                    const t = document.getElementById('toast'); if (!t) return;
+                    t.textContent = msg;
+                    t.classList.remove('hidden');
+                    clearTimeout(showToast._tid);
+                    showToast._tid = setTimeout(()=>{ t.classList.add('hidden'); }, ms);
+                }catch(e){ console.warn('toast failed', e); }
+            }
+
+            /** Обновляет индикатор статуса WebSocket */
+            function setWsStatus(text, color){
+                if (!wsStatusEl) return;
+                wsStatusEl.textContent = 'WS: ' + text + (wsReconnectAttempts>0 ? ` (попыток: ${wsReconnectAttempts})` : '');
+                wsStatusEl.style.color = color || '#888';
+            }
+
+            /** Формирует ws‑сообщение для переименования файла */
+            function wsRenameMsg(from, to) {
+                // Default Moonraker-style set command (adjust if your printer uses another format)
+                return JSON.stringify({ method: 'set', params: { opGcodeFile: `renameprt:${from}:${to}` } });
+            }
+
+            // ===== wsClient =====
+            /** Открывает/переиспользует WebSocket, ждёт OPEN или таймаут */
+            function openWs(timeoutMs = 5000) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        // If we already have an open socket, reuse it
+                        if (ws && ws.readyState === WebSocket.OPEN) return resolve(ws);
+
+                        // If socket is connecting, wait for it to open
+                        if (ws && ws.readyState === WebSocket.CONNECTING) {
+                            const existing = ws;
+                            const onOpen = () => {
+                                cleanup();
+                                resolve(existing);
+                            };
+                            const onError = (e) => {
+                                cleanup();
+                                reject(e || new Error('WS connection error'));
+                            };
+                            function cleanup(){
+                                try{ existing.removeEventListener('open', onOpen); existing.removeEventListener('error', onError); }catch(e){}
+                            }
+                            existing.addEventListener('open', onOpen);
+                            existing.addEventListener('error', onError);
+                            // also set a timeout in case it never opens
+                            const tid = setTimeout(()=>{ cleanup(); reject(new Error('WS open timeout')); }, timeoutMs);
+                            return;
+                        }
+
+                        // Otherwise create a new socket
+                        const url = 'ws://' + host + ':' + WS_PORT;
+                        wsReconnectAttempts += 1;
+                        setWsStatus('подключение', '#ff8');
+                        ws = new WebSocket(url);
+
+                        let settled = false;
+                        const tid = setTimeout(()=>{
+                            if (!settled) {
+                                settled = true;
+                                try{ ws.close(); }catch(e){}
+                                ws = null;
+                                reject(new Error('WS open timeout'));
+                            }
+                        }, timeoutMs);
+
+                        ws.onopen = () => {
+                            wsOpen = true;
+                            wsReconnectAttempts = 0;
+                            setWsStatus('подключен', '#8f8');
+                            if (!settled) {
+                                settled = true;
+                                clearTimeout(tid);
+                                resolve(ws);
+                            }
+                        };
+                        ws.onmessage = (m) => {
+                            console.debug('ws msg', m.data);
+                            try{
+                                const obj = JSON.parse(m.data);
+                                if (window.__wsMessageHandlers && window.__wsMessageHandlers.length) {
+                                    // copy to avoid mutation during iteration
+                                    window.__wsMessageHandlers.slice().forEach(h=>{ try{ h(obj, m.data); }catch(e){} });
+                                }
+                            }catch(e){ /* ignore non-json messages */ }
+                        };
+                        ws.onerror = (e) => {
+                            wsOpen = false;
+                            console.warn('ws error', e);
+                            setWsStatus('ошибка', '#f88');
+                            if (!settled) {
+                                settled = true;
+                                clearTimeout(tid);
+                                reject(e || new Error('WS error'));
+                            }
+                        };
+                        ws.onclose = () => {
+                            wsOpen = false;
+                            setWsStatus('закрыт', '#f88');
+                            // clear ws to allow a fresh reconnect later
+                            try{ ws = null; }catch(e){}
+                            // trigger auto-reconnect loop in background
+                            try{ scheduleWsReconnect(); }catch(e){}
+                        };
+                    } catch (e) { reject(e); }
+                });
+            }
+
+            // Auto-reconnect with exponential backoff (infinite attempts)
+            let wsReconnectTimer = null;
+            /** Планирует авто‑переподключение с экспоненциальной задержкой */
+            function scheduleWsReconnect(){
+                // if already open or connecting, do nothing
+                if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+                // compute delay based on attempts: start 1s, double, cap at 10s
+                const base = 1000;
+                const maxDelay = 10000;
+                const attempt = Math.max(1, wsReconnectAttempts);
+                const delay = Math.min(maxDelay, base * Math.pow(2, Math.min(attempt, 8) - 1));
+                if (wsReconnectTimer) { try{ clearTimeout(wsReconnectTimer); }catch(e){} wsReconnectTimer = null; }
+                wsReconnectTimer = setTimeout(()=>{
+                    // try to open; openWs will bump wsReconnectAttempts and update status
+                    openWs(5000).catch(()=>{
+                        // failure: schedule again
+                        scheduleWsReconnect();
+                    });
+                }, delay);
+                setWsStatus('подключение', '#ff8');
+            }
+
+            /** Отправляет команду переименования через WS */
+            async function sendWsRename(from, to) {
+                try {
+                    const socket = await openWs();
+                    socket.send(wsRenameMsg(from, to));
+                    return true;
+                } catch (e) {
+                    console.warn('WS send failed', e);
+                    return false;
+                }
+            }
+
+            // ===== printerApi =====
+            /** Переименовать cfg → gcode */
+            async function renameCfgToGcode(cfg){
+                const paths = computePathsFor(cfg);
+                return await sendWsRename(paths.from, paths.to);
+            }
+            /** Переименовать gcode → cfg */
+            async function renameGcodeToCfg(cfg){
+                const paths = computePathsFor(cfg);
+                return await sendWsRename(paths.to, paths.from);
+            }
+            /** Формирует URL загрузки gcode на принтер */
+            function buildUploadUrl(hostname, cfg){
+                const proto = httpProto();
+                return withProxy(proto + '//' + hostname + '/upload/' + gcodeFilename(cfg.name));
+            }
+            /** Отправляет FIRMWARE_RESTART и ждёт сообщения {connect:1} */
+            async function firmwareRestartWaitForConnect(timeoutMs){
+                const socket = await openWs(CONST.WS_OPEN_TIMEOUT);
+                const msg = JSON.stringify({ method: 'set', params: { gcodeCmd: 'FIRMWARE_RESTART' } });
+                socket.send(msg);
+                return await new Promise((resolve, reject)=>{
+                    let finished = false;
+                    const remover = addWsMessageHandler((obj)=>{
+                        try{
+                            if (obj && obj.connect === 1 && !finished){ finished = true; try{ clearTimeout(tid); }catch(e){} try{ remover(); }catch(e){} resolve(true); }
+                        }catch(e){}
+                    });
+                    const tid = setTimeout(()=>{ if (!finished){ finished = true; try{ remover(); }catch(e){} reject(new Error('timeout waiting connect=1')); } }, timeoutMs);
+                });
+            }
+
+            // ===== uiState / pub-sub =====
+            // Simple pub/sub for WS JSON messages. Handlers receive (obj, raw)
+            /** Регистрирует обработчик WS‑сообщений JSON; возвращает remover */
+            function addWsMessageHandler(fn) {
+                window.__wsMessageHandlers = window.__wsMessageHandlers || [];
+                window.__wsMessageHandlers.push(fn);
+                return function remove() {
+                    const i = window.__wsMessageHandlers.indexOf(fn);
+                    if (i >= 0) window.__wsMessageHandlers.splice(i, 1);
+                };
+            }
+
+            // Show/hide firmware overlay
+            /** Показывает/скрывает оверлей ожидания прошивки */
+            function showFirmwareOverlay(flag) {
+                const o = document.getElementById('fwOverlay');
+                if (!o) return;
+                if (flag) { o.classList.remove('hidden'); o.classList.add('overlayFlex'); }
+                else { o.classList.add('hidden'); o.classList.remove('overlayFlex'); }
+            }
+
+            // ===== UI: Firmware restart =====
+            (function setupFirmwareButton(){
+                try{
+                    const btn = document.getElementById('btnFirmwareRestart');
+                    if (!btn) return;
+                    btn.addEventListener('click', async ()=>{
+                        btn.disabled = true;
+                        showFirmwareOverlay(true);
+                        try{
+                            await firmwareRestartWaitForConnect(CONST.RESTART_TIMEOUT);
+                            showFirmwareOverlay(false);
+                            btn.disabled = false;
+                            console.log('Firmware restart: connect=1 observed');
+                        }catch(e){
+                            showFirmwareOverlay(false);
+                            btn.disabled = false;
+                            showToast('Ошибка ожидания состояния принтера: ' + e);
+                        }
+                    });
+                }catch(e){ console.warn('setupFirmwareButton failed', e); }
+            })();
+
+            /** Пуллит файл по HTTP с ретраями и эксп. задержкой */
+            async function pollFile(url, attempts = 8, initialDelay = 800) {
+                let delay = initialDelay;
+                for (let i = 0; i < attempts; i++) {
+                    const res = await httpFetch(url, { cache: 'no-store' });
+                    if (res.ok) return res.body;
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 1.6;
+                }
+                return null;
+            }
+
+            /** Загружает файл на принтер (multipart/form-data) */
+            async function uploadFile(url, filename, text) {
+                const fd = new FormData();
+                const blob = new Blob([text], { type: 'application/octet-stream' });
+                fd.append('file', blob, filename);
+                return await httpFetch(url, { method: 'POST', body: fd });
+            }
+
+            // ===== UI: Editor =====
+            /** Инициализация/обновление CodeMirror редактора */
+            function initEditor(text) {
+                const ta = document.getElementById('cfg');
+                // hide placeholder while we display the editor
+                placeholder.style.display = 'none';
+                // If CodeMirror already exists, set value and refresh
+                if (cm) {
+                    cm.setValue(text);
+                    // ensure layout is correct
+                    try{ cm.refresh(); }catch(e){}
+                } else {
+                    // keep the raw textarea hidden to avoid white flash
+                    ta.style.display = 'none';
+                    ta.value = text;
+                    cm = CodeMirror.fromTextArea(ta, {
+                        mode: 'properties',
+                        lineNumbers: true,
+                        theme: 'monokai',
+                        viewportMargin: Infinity
+                    });
+                    cm.getWrapperElement().style.height = '100%';
+                    cm.on('change', () => { btnSave.disabled = false; });
+                    try{ cm.refresh(); }catch(e){}
+                }
+                // hide loading overlay if present
+                const lo = document.getElementById('loadingOverlay'); if (lo) { lo.classList.add('hidden'); lo.classList.remove('overlayFlex'); }
+            }
+
+            // ===== Orchestration: end-to-end sequence =====
+            /** Основной сценарий: проверка прокси → переименовать → скачать → вернуть */
+            async function runEditorSequence() {
+                setStepStatus(1, 'проверка', null);
+                setStepStatus(2, 'ожидание', null);
+                setStepStatus(3, 'ожидание', null);
+                setStepStatus(4, 'ожидание', null);
+
+                const proxyOk = await ensureWarpProxyAvailability({ showNoticeOnFail: true });
+                if (!proxyOk) {
+                    setStepStatus(1, 'нет доступа', false);
+                    showToast(`warp-cors недоступен — запустите прокси на ${WARP_PORT} порту.`);
+                    return;
+                }
+                setStepStatus(1, 'готов', true);
+
+                const cfg = getCfgObj();
+                setStepStatus(2, 'выполняется', null);
+                const sent1 = await renameCfgToGcode(cfg);
+                setStepStatus(2, sent1 ? 'отправлено' : 'ошибка отправки', sent1);
+
+                setStepStatus(3, 'запрос...', null);
+                const lo = document.getElementById('loadingOverlay');
+                const hideLoading = () => { if (lo) { lo.classList.add('hidden'); lo.classList.remove('overlayFlex'); } };
+                if (lo) { lo.classList.remove('hidden'); lo.classList.add('overlayFlex'); }
+                const proto = httpProto();
+                const downloadPath = '/downloads/gcode/' + gcodeFilename(cfg.name);
+                const fileUrl = withProxy(proto + '//' + host + downloadPath);
+                const body = await pollFile(fileUrl, CONST.POLL_ATTEMPTS, CONST.POLL_INITIAL_DELAY);
+                if (body !== null) {
+                    setStepStatus(3, 'успех', true);
+                    initEditor(body);
+                    fileText = body;
+                    btnSave.disabled = false;
+                } else {
+                    setStepStatus(3, 'не найдено', false);
+                    hideLoading();
+                    console.warn('Не удалось скачать файл с принтера.');
+                }
+
+                setStepStatus(4, 'выполнение', null);
+                const sent3 = await renameGcodeToCfg(cfg);
+                setStepStatus(4, sent3 ? 'отправлено' : 'ошибка', sent3);
+            }
+
+            // populate cfg select UI and initial run
+            function populateCfgSelect(){
+                try{
+                    const sel = document.getElementById('cfgSelect');
+                    if (!sel) return;
+                    sel.innerHTML = '';
+                    CFG_LIST.forEach(c=>{
+                        const opt = document.createElement('option'); opt.value = c.name; opt.textContent = c.name; sel.appendChild(opt);
+                    });
+                    // restore selection
+                    const saved = (window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorSelectedCfg')) || CFG_LIST[0].name;
+                    selectedCfgName = saved;
+                    sel.value = selectedCfgName;
+                    updateCfgTitle();
+                    sel.addEventListener('change', ()=>{
+                        selectedCfgName = sel.value;
+                        try{ window.localStorage.setItem('cfgEditorSelectedCfg', selectedCfgName); }catch(e){}
+                        updateCfgTitle();
+                        // restart sequence for newly selected cfg
+                        runEditorSequence().catch(e=>{ console.error('runEditorSequence failed', e); showToast('Ошибка запуска сценария: '+e); });
+                    });
+                }catch(e){ console.warn('populateCfgSelect failed', e); }
+            }
+
+            function updateCfgTitle(){
+                try{
+                    const el = document.getElementById('cfgTitleName');
+                    if (el) el.textContent = selectedCfgName || CFG_LIST[0].name;
+                    document.title = 'Редактор ' + (selectedCfgName || CFG_LIST[0].name);
+                    if (stepDownloadLabel){
+                        const n = getCfgObj();
+                        stepDownloadLabel.textContent = '3. Загрузка /downloads/gcode/' + gcodeFilename(n.name);
+                    }
+                }catch(e){ console.warn('updateCfgTitle failed', e); }
+            }
+
+            populateCfgSelect();
+            // Запускаем сценарий ТОЛЬКО если известен IP принтера
+            if (host) {
+                runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast('Ошибка запуска сценария: '+e); });
+            }
+
+            // If page is opened via file:// or running on localhost, prompt user to enter printer IP
+            (function ipPrompt(){
+                try{
+                    const isLocalFile = location.protocol === 'file:';
+                    const isLocalhost = (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
+                    const promptEl = document.getElementById('ipPrompt');
+                    const input = document.getElementById('printerIpInput');
+                    const btnUse = document.getElementById('btnUseIp');
+                    const btnDismiss = document.getElementById('btnDismissIp');
+                    if (!promptEl || !input || !btnUse || !btnDismiss) return;
+
+                    // Если IP не сохранён — всегда показать ввод, вне зависимости от протокола
+                    let saved = null;
+                    try{ saved = window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorPrinterHost'); }catch(e){}
+                    if (!saved) {
+                        promptEl.style.display = '';
+                        input.value = '';
+                    }
+
+                    btnUse.addEventListener('click', ()=>{
+                        const v = input.value.trim();
+                        if (!v) { showToast('Введите IP принтера'); return; }
+                        host = v;
+                        try{ window.localStorage.setItem('cfgEditorPrinterHost', v); }catch(e){}
+                        document.getElementById('hostDisplay').textContent = host;
+                        promptEl.style.display = 'none';
+                        // запустить сценарий после указания IP
+                        runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast('Ошибка запуска сценария: '+e); });
+                    });
+
+                    btnDismiss.addEventListener('click', ()=>{ promptEl.style.display = 'none'; });
+                }catch(e){ console.warn('ipPrompt failed', e); }
+            })();
+
+            // First-run notice: show once per browser using localStorage
+            (function firstRunNotice(){
+                try{
+                            // first-run notice removed — no UI or localStorage handling here
+                }catch(e){ console.warn('firstRunNotice failed', e); }
+            })();
+
+            btnSave.addEventListener('click', async () => {
+                if (!cm) return;
+                btnSave.disabled = true;
+                try{
+                    setStepStatus(4, 'загрузка...', null);
+                    const proxyOk = await ensureWarpProxyAvailability({ showNoticeOnFail: true });
+                    if (!proxyOk) {
+                        setStepStatus(4, 'warp-cors недоступен', false);
+                        showToast('Сохранение отменено: warp-cors недоступен.');
+                        return;
+                    }
+
+                    const content = cm.getValue();
+                    const cfg = getCfgObj();
+                    const uploadUrl = buildUploadUrl(host, cfg);
+                    const res = await uploadFile(uploadUrl, gcodeFilename(cfg.name), content);
+                    if (!res.ok) {
+                        const bodySnippet = (res.body || '').slice(0, 160);
+                        setStepStatus(4, 'ошибка загрузки', false);
+                        showToast('Ошибка загрузки: ' + (res.status || '?') + (bodySnippet ? (' ' + bodySnippet) : ''));
+                        console.warn('Ошибка загрузки:', res.status, res.body);
+                        return;
+                    }
+
+                    const renamed = await renameGcodeToCfg(cfg);
+                    if (renamed) {
+                        setStepStatus(4, 'перенесено', true);
+                    } else {
+                        setStepStatus(4, 'ошибка переименования', false);
+                        showToast('Файл загружен, но не удалось вернуть cfg.');
+                    }
+                }catch(e){
+                    console.error('btnSave failed', e);
+                    setStepStatus(4, 'ошибка', false);
+                    showToast('Ошибка сохранения: ' + e);
+                }finally{
+                    btnSave.disabled = false;
+                }
+            });
+
+            // Bed mesh extraction button
+            document.getElementById('btnBedMesh').addEventListener('click', ()=>{
+                try{
+                    // prefer the current editor content if available
+                    let content = '';
+                    if (cm) content = cm.getValue();
+                    if (!content) content = (typeof fileText === 'string') ? fileText : '';
+                    if (!content || !content.trim()) { showToast('Конфиг не загружен или пуст'); return; }
+
+                    const lines = content.split(/\r?\n/);
+                    // find start of bed_mesh section (line that contains [bed_mesh default], possibly commented with #*#)
+                    const startRe = /^\s*(?:#\*#\s*)?\[bed_mesh\s+default\]/i;
+                    const headerRe = /^\s*(?:#\*#\s*)?\[.*\]/; // next section header
+                    const rowRe = /^\s*(?:#\*#\s*)?\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?\s*,\s*[+-]?\d*\.?\d+(?:[eE][+-]?\d+)?\s*,\s*[+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)/;
+
+                    let start = -1;
+                    for (let i=0;i<lines.length;i++){
+                        if (startRe.test(lines[i])) { start = i; break; }
+                    }
+                    if (start === -1) { showToast('Раздел [bed_mesh default] не найден'); return; }
+
+                    const matrix = [];
+                    for (let j = start+1; j < lines.length; j++){
+                        const ln = lines[j];
+                        if (headerRe.test(ln)) break; // reached next section
+                        const m = ln.match(rowRe);
+                        if (m){
+                            // extract the three numbers
+                            const nums = m[1].split(',').map(s => parseFloat(s.trim()));
+                            if (nums.length === 3 && nums.every(n => !Number.isNaN(n))) matrix.push(nums);
+                        }
+                    }
+
+                    if (matrix.length === 0) { showToast('Точки bed_mesh не найдены'); return; }
+
+                    // Show result: log and open modal graph
+                    console.log('Bed mesh: %d rows extracted', matrix.length);
+                    console.log('Bed mesh matrix:', matrix);
+
+                    // extract bounds (min_x, max_x, min_y, max_y) from the same section
+                    const bounds = { min_x: null, max_x: null, min_y: null, max_y: null };
+                    const boundRe = /^\s*(?:#\*#\s*)?(min_x|max_x|min_y|max_y)\s*=\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)/i;
+                    for (let k = start+1; k < lines.length; k++){
+                        const ln = lines[k];
+                        if (/^\s*(?:#\*#\s*)?\[.*\]/.test(ln)) break;
+                        const mb = ln.match(boundRe);
+                        if (mb) {
+                            bounds[mb[1].toLowerCase()] = parseFloat(mb[2]);
+                        }
+                    }
+
+                    showMeshModal(matrix, bounds);
+
+                }catch(e){ console.error('Bed mesh extraction failed', e); showToast('Ошибка извлечения bed_mesh: '+e); }
+            });
+
+            // Modal and draw utilities
+            function showMeshModal(matrix, bounds){
+                try{
+                            const overlay = document.getElementById('meshModalOverlay');
+                            const canvas = document.getElementById('meshCanvas');
+                            const boundsLabel = document.getElementById('meshBounds');
+                            const tooltip = document.getElementById('meshTooltip');
+                    if (!overlay || !canvas) return;
+                    boundsLabel.textContent = `min_x=${bounds.min_x ?? '?' } max_x=${bounds.max_x ?? '?' } min_y=${bounds.min_y ?? '?' } max_y=${bounds.max_y ?? '?'}`;
+                    overlay.style.display = 'flex';
+                    drawHeatmap(canvas, matrix, bounds);
+                    // attach mouse handlers for tooltip (only once)
+                    if (canvas && tooltip && !canvas._meshHandlersAttached) {
+                        canvas.addEventListener('mousemove', meshCanvasMouseMove);
+                        canvas.addEventListener('mouseleave', ()=>{ tooltip.style.display='none'; });
+                        canvas._meshHandlersAttached = true;
+                    }
+                }catch(e){ console.warn('showMeshModal error', e); }
+            }
+
+            document.getElementById('meshClose').addEventListener('click', ()=>{
+                const overlay = document.getElementById('meshModalOverlay');
+                if (overlay) overlay.style.display = 'none';
+            });
+
+            function drawHeatmap(canvas, matrix, bounds){
+                const ctx = canvas.getContext('2d');
+                const DPR = window.devicePixelRatio || 1;
+                const w = canvas.clientWidth;
+                const h = canvas.clientHeight;
+                canvas.width = Math.floor(w * DPR);
+                canvas.height = Math.floor(h * DPR);
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+                ctx.clearRect(0,0,w,h);
+
+                // original matrix dimensions
+                const rows = matrix.length;
+                const cols = (matrix[0] || []).length || 1;
+
+                // upscale target: try to make a smooth image without being too large
+                const MAX_DIM = 220; // cap target size to keep CPU reasonable
+                const targetCols = Math.min(MAX_DIM, cols * 4);
+                const targetRows = Math.min(MAX_DIM, rows * 4);
+
+                // resample (bilinear) and apply a mild gaussian smoothing
+                let resampled = bilinearResample(matrix, targetCols, targetRows);
+                resampled = gaussianSmooth(resampled, 1.0); // sigma=1.0 gives mild smoothing
+
+                // use resampled matrix for drawing
+                const drawMatrix = resampled;
+                const drawRows = drawMatrix.length;
+                const drawCols = (drawMatrix[0] || []).length || 1;
+                // compute min/max z
+                let zmin = Infinity, zmax = -Infinity;
+                for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const v = matrix[r][c]; if (v < zmin) zmin = v; if (v > zmax) zmax = v; }
+                if (!isFinite(zmin) || !isFinite(zmax)) { ctx.fillStyle='#f88'; ctx.fillText('Нет данных', 10, 20); return; }
+                if (zmin === zmax) { zmin -= 0.001; zmax += 0.001; }
+
+                const cellW = w / drawCols;
+                const cellH = h / drawRows;
+                // draw grid cells from resampled matrix
+                for (let r=0;r<drawRows;r++){
+                    for (let c=0;c<drawCols;c++){
+                        const v = drawMatrix[r][c];
+                        const t = (v - zmin) / (zmax - zmin);
+                        ctx.fillStyle = colormap(t);
+                        ctx.fillRect(c*cellW, r*cellH, cellW + 1, cellH + 1);
+                    }
+                }
+                
+                const bx0 = bounds.min_x != null ? String(bounds.min_x) : '?';
+                const bx1 = bounds.max_x != null ? String(bounds.max_x) : '?';
+                const by0 = bounds.min_y != null ? String(bounds.min_y) : '?';
+                const by1 = bounds.max_y != null ? String(bounds.max_y) : '?';
+
+                // legend (right side)
+                const legendW = 12; const legendH = Math.min(160, h-40);
+                const rightOffset = 12; // extra gap from right edge
+                const lx = w - 60 - rightOffset; const ly = 20;
+                // draw capsule background behind legend and labels (rounded ends)
+                const padX = 8, padY = 6;
+                // prepare label texts and measure width
+                ctx.font = '12px Arial';
+                const topLabel = zmax.toFixed(3);
+                const botLabel = zmin.toFixed(3);
+                const labelPad = 8;
+                const topW = ctx.measureText(topLabel).width;
+                const botW = ctx.measureText(botLabel).width;
+                const labelW = Math.max(topW, botW);
+                // expand capsule to include the label area to the right
+                const capExtra = labelW + labelPad + 6; // extra space for labels
+                const capX = lx - padX;
+                const capY = ly - padY;
+                const capW = legendW + padX*2 + capExtra;
+                const capH = legendH + padY*2;
+                const capR = Math.min(capW/2, 14);
+                ctx.beginPath();
+                ctx.moveTo(capX + capR, capY);
+                ctx.arcTo(capX + capW, capY, capX + capW, capY + capH, capR);
+                ctx.arcTo(capX + capW, capY + capH, capX, capY + capH, capR);
+                ctx.arcTo(capX, capY + capH, capX, capY, capR);
+                ctx.arcTo(capX, capY, capX + capW, capY, capR);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                ctx.fill();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                ctx.stroke();
+
+                // draw gradient bar on top of capsule (left portion)
+                for (let i=0;i<legendH;i++){
+                    const t = i / (legendH-1);
+                    ctx.fillStyle = colormap(1 - t);
+                    ctx.fillRect(lx, ly + i, legendW, 1);
+                }
+
+                // draw labels inside capsule, to the right of the gradient
+                ctx.fillStyle = '#fff';
+                const labelX = lx + legendW + padX + 4;
+                ctx.fillText(topLabel, labelX, ly + 8);
+                ctx.fillText(botLabel, labelX, ly + legendH - 2);
+
+                // expose last drawn matrix and dims for tooltip handler
+                window.__lastMesh = {
+                    matrix: drawMatrix,
+                    rows: drawRows,
+                    cols: drawCols,
+                    bounds: bounds,
+                    canvasWidth: w,
+                    canvasHeight: h
+                };
+            }
+
+            // User gradient colormap (interpolated stops):
+            // bottom (t=0) -> deep blue, -> light blue -> pale yellow -> orange -> red (t=1)
+            function colormap(t){
+                t = Math.max(0, Math.min(1, t));
+                const stops = [
+                    {t:0.0, c:'#042a66'},    // deep blue
+                    {t:0.25, c:'#7ec8ff'},   // light blue
+                    {t:0.5, c:'#fff2a8'},    // pale yellow
+                    {t:0.75, c:'#ff8a2b'},   // orange
+                    {t:1.0, c:'#d92b3d'}     // red
+                ];
+                // find interval
+                let a = stops[0], b = stops[stops.length-1];
+                for (let i=0;i<stops.length-1;i++){
+                    if (t >= stops[i].t && t <= stops[i+1].t){ a = stops[i]; b = stops[i+1]; break; }
+                }
+                const localT = (t - a.t) / (b.t - a.t || 1);
+                return lerpColor(a.c, b.c, localT);
+            }
+
+            // linear interpolate between two hex colors (#rrggbb)
+            function lerpColor(hexA, hexB, t){
+                const a = hexToRgb(hexA);
+                const b = hexToRgb(hexB);
+                const r = Math.round(a.r + (b.r - a.r) * t);
+                const g = Math.round(a.g + (b.g - a.g) * t);
+                const bl = Math.round(a.b + (b.b - a.b) * t);
+                return `rgb(${r},${g},${bl})`;
+            }
+
+            function hexToRgb(hex){
+                const m = hex.replace('#','');
+                const r = parseInt(m.substring(0,2),16);
+                const g = parseInt(m.substring(2,4),16);
+                const b = parseInt(m.substring(4,6),16);
+                return {r,g,b};
+            }
+
+            // Mouse move handler for mesh canvas: shows z and XY under cursor
+            function meshCanvasMouseMove(evt){
+                try{
+                    const last = window.__lastMesh;
+                    const tooltip = document.getElementById('meshTooltip');
+                    if (!last || !tooltip) return;
+                    const canvas = evt.currentTarget;
+                    const rect = canvas.getBoundingClientRect();
+                    const x = evt.clientX - rect.left;
+                    const y = evt.clientY - rect.top;
+                    // Compute fractional index into the last.matrix (cols x rows)
+                    const fx = (x / rect.width) * last.cols; // in [0, cols)
+                    const fy = (y / rect.height) * last.rows; // in [0, rows)
+
+                    // indices for interpolation
+                    const ix = Math.floor(fx);
+                    const iy = Math.floor(fy);
+                    const dx = fx - ix;
+                    const dy = fy - iy;
+
+                    // clamp neighbor indices
+                    const ix0 = Math.max(0, Math.min(last.cols - 1, ix));
+                    const iy0 = Math.max(0, Math.min(last.rows - 1, iy));
+                    const ix1 = Math.max(0, Math.min(last.cols - 1, ix + 1));
+                    const iy1 = Math.max(0, Math.min(last.rows - 1, iy + 1));
+
+                    const m = last.matrix;
+                    const v00 = (m[iy0] && typeof m[iy0][ix0] === 'number') ? m[iy0][ix0] : null;
+                    const v10 = (m[iy0] && typeof m[iy0][ix1] === 'number') ? m[iy0][ix1] : null;
+                    const v01 = (m[iy1] && typeof m[iy1][ix0] === 'number') ? m[iy1][ix0] : null;
+                    const v11 = (m[iy1] && typeof m[iy1][ix1] === 'number') ? m[iy1][ix1] : null;
+
+                    // If any neighbor is missing, fall back to nearest-cell behavior
+                    let z = null;
+                    if (v00 == null && v10 == null && v01 == null && v11 == null) {
+                        tooltip.style.display = 'none';
+                        return;
+                    }
+
+                    if (v00 != null && v10 != null && v01 != null && v11 != null) {
+                        // bilinear interpolation
+                        const a = v00 * (1 - dx) + v10 * dx;
+                        const b = v01 * (1 - dx) + v11 * dx;
+                        z = a * (1 - dy) + b * dy;
+                    } else {
+                        // choose nearest available neighbor
+                        const nx = Math.round(fx);
+                        const ny = Math.round(fy);
+                        const nxc = Math.max(0, Math.min(last.cols-1, nx));
+                        const nyc = Math.max(0, Math.min(last.rows-1, ny));
+                        z = (m[nyc] && typeof m[nyc][nxc] === 'number') ? m[nyc][nxc] : (v00 ?? v10 ?? v01 ?? v11);
+                    }
+
+                    // map to real XY using fractional position across the matrix
+                    const bnd = last.bounds || {};
+                    let realX = null, realY = null;
+                    if (bnd.min_x != null && bnd.max_x != null && last.cols > 1) {
+                        // fx is in [0, cols); map to 0..1 across grid width
+                        const ux = fx / (last.cols - 1);
+                        realX = bnd.min_x + ux * (bnd.max_x - bnd.min_x);
+                    }
+                    if (bnd.min_y != null && bnd.max_y != null && last.rows > 1) {
+                        const uy = fy / (last.rows - 1);
+                        realY = bnd.min_y + uy * (bnd.max_y - bnd.min_y);
+                    }
+
+                    const parts = [];
+                    parts.push('z: ' + (typeof z === 'number' ? z.toFixed(4) : String(z)));
+                    if (realX != null && realY != null) parts.push('x: ' + realX.toFixed(2) + ' y: ' + realY.toFixed(2));
+                    tooltip.textContent = parts.join('\n');
+                    tooltip.style.display = 'block';
+                    // position tooltip near cursor but keep inside viewport
+                    const left = Math.min(window.innerWidth - 160, evt.clientX + 12);
+                    const top = Math.min(window.innerHeight - 60, evt.clientY + 12);
+                    tooltip.style.left = left + 'px';
+                    tooltip.style.top = top + 'px';
+                }catch(e){ console.warn('meshMouseMove error', e); }
+            }
+
+            // Bilinear resampling: scale matrix to outW x outH
+            function bilinearResample(matrix, outW, outH){
+                const inH = matrix.length;
+                const inW = inH ? matrix[0].length : 0;
+                if (!inW || !inH) return [[]];
+                const out = new Array(outH);
+                for (let y=0;y<outH;y++){
+                    out[y] = new Array(outW);
+                    const fy = y * (inH - 1) / (outH - 1);
+                    const iy = Math.floor(fy);
+                    const dy = fy - iy;
+                    const iy1 = Math.min(iy+1, inH-1);
+                    for (let x=0;x<outW;x++){
+                        const fx = x * (inW - 1) / (outW - 1);
+                        const ix = Math.floor(fx);
+                        const dx = fx - ix;
+                        const ix1 = Math.min(ix+1, inW-1);
+                        const v00 = matrix[iy][ix];
+                        const v10 = matrix[iy][ix1];
+                        const v01 = matrix[iy1][ix];
+                        const v11 = matrix[iy1][ix1];
+                        const v0 = v00*(1-dx) + v10*dx;
+                        const v1 = v01*(1-dx) + v11*dx;
+                        out[y][x] = v0*(1-dy) + v1*dy;
+                    }
+                }
+                return out;
+            }
+
+            // Gaussian smoothing (separable) on a matrix of numbers. sigma ~ 0.5..2.0
+            function gaussianSmooth(matrix, sigma){
+                if (!sigma || sigma <= 0) return matrix;
+                const rows = matrix.length;
+                const cols = (matrix[0] || []).length || 0;
+                if (!rows || !cols) return matrix;
+                const radius = Math.ceil(sigma * 3);
+                const size = radius * 2 + 1;
+                // build 1D kernel
+                const kernel = new Array(size);
+                const twoSigma2 = 2 * sigma * sigma;
+                let sum = 0;
+                for (let i = -radius; i <= radius; i++){ const v = Math.exp(-(i*i)/twoSigma2); kernel[i+radius]=v; sum += v; }
+                for (let i=0;i<size;i++) kernel[i] /= sum;
+
+                // horizontal pass
+                const horiz = new Array(rows);
+                for (let r=0;r<rows;r++){
+                    horiz[r] = new Array(cols).fill(0);
+                    for (let c=0;c<cols;c++){
+                        let acc = 0;
+                        for (let k=-radius;k<=radius;k++){
+                            const cc = Math.min(cols-1, Math.max(0, c+k));
+                            acc += matrix[r][cc] * kernel[k+radius];
+                        }
+                        horiz[r][c] = acc;
+                    }
+                }
+
+                // vertical pass
+                const out = new Array(rows);
+                for (let r=0;r<rows;r++){
+                    out[r] = new Array(cols).fill(0);
+                }
+                for (let c=0;c<cols;c++){
+                    for (let r=0;r<rows;r++){
+                        let acc = 0;
+                        for (let k=-radius;k<=radius;k++){
+                            const rr = Math.min(rows-1, Math.max(0, r+k));
+                            acc += horiz[rr][c] * kernel[k+radius];
+                        }
+                        out[r][c] = acc;
+                    }
+                }
+                return out;
+            }
+        
+        })();
+    </script>
+</body>
+
+</html>
