@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/monokai.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/properties/properties.min.js"></script>
+    <!-- i18n: i18next -->
+    <script src="https://unpkg.com/i18next@23.7.6/dist/umd/i18next.min.js"></script>
     <style>
         html, body { height: 100%; }
         body {
@@ -128,23 +130,33 @@
 </head>
 
 <body>
+    <div style="position:sticky;top:0;z-index:100001;background:#141414;color:#ddd;padding:6px 12px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:12px">
+        <a href="https://github.com/Exieros/k1c_cfgeditor" target="_blank" rel="noopener noreferrer" style="color:#76b6ff;text-decoration:none">GitHub: Exieros/k1c_cfgeditor</a>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+            <label for="langSelect" style="font-size:12px;color:#bbb" data-i18n="top.lang">Язык</label>
+            <select id="langSelect" style="background:#1b1b1b;color:#ddd;border-radius:6px;padding:4px 6px;border:1px solid #333">
+                <option value="ru">Из России с любовью</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+    </div>
     <div class="topbar">
-        <div class="title">Редактор <span id="cfgTitleName">printer.cfg</span> — <span id="hostDisplay"></span> <span id="wsStatus" style="margin-left:12px;font-size:12px;color:#888">WS: нет</span></div>
+        <div class="title"><span data-i18n="top.title">Редактор</span> <span id="cfgTitleName">printer.cfg</span> — <span id="hostDisplay"></span> <span id="wsStatus" style="margin-left:12px;font-size:12px;color:#888" data-i18n="top.ws">WS: нет</span></div>
         <div style="flex:1"></div>
         <select id="cfgSelect" style="background:#1b1b1b;color:#ddd;border-radius:6px;padding:6px 8px;border:1px solid #333;margin-right:8px"></select>
-        <button id="btnBedMesh" title="Извлечь bed_mesh">Bed mesh</button>
-        <button id="btnFirmwareRestart" title="Перезапустить прошивку">Firmware restart</button>
-        <button id="btnSave" disabled>Save</button>
+        <button id="btnBedMesh" title="Извлечь bed_mesh" data-i18n="top.bedMesh">Bed mesh</button>
+        <button id="btnFirmwareRestart" title="Перезапустить прошивку" data-i18n="top.fwRestart">Firmware restart</button>
+        <button id="btnSave" disabled data-i18n="top.save">Save</button>
     </div>
 
     <div id="warpNotice" class="notice" style="display:none; background:#fff2f0; border-color:#f2c6c0; color:#2b2b2b; position:fixed; left:16px; right:16px; top:64px; z-index:100000">
         <div class="text">
-            <strong>Проблема CORS:</strong>
+            <strong data-i18n="notice.corsTitle">Проблема CORS:</strong>
             <div id="warpNoticeText" style="margin-top:6px;color:#2b2b2b">Прокси CORS (warp-cors) недоступен — это может блокировать загрузку на принтер.</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-            <button id="btnCopyWarpCmd">Скопировать команду</button>
-            <button id="btnDismissWarp">Закрыть</button>
+            <button id="btnCopyWarpCmd" data-i18n="notice.copyCmd">Скопировать команду</button>
+            <button id="btnDismissWarp" data-i18n="notice.close">Закрыть</button>
         </div>
     </div>
 
@@ -162,44 +174,170 @@
 
     <div id="ipPrompt" class="notice" style="display:none">
         <div class="text">
-            <strong>Введите IP принтера:</strong>
+            <strong data-i18n="ip.title">Введите IP принтера:</strong>
             <input id="printerIpInput" type="text" placeholder="192.168.1.100" style="margin-left:8px;padding:6px;border-radius:4px;border:1px solid #ccc" />
         </div>
         <div style="display:flex;gap:8px">
-            <button id="btnUseIp">Использовать</button>
-            <button id="btnDismissIp">Закрыть</button>
+            <button id="btnUseIp" data-i18n="ip.use">Использовать</button>
+            <button id="btnDismissIp" data-i18n="ip.close">Закрыть</button>
         </div>
     </div>
 
     <div class="steps">
         <div class="step" data-step="warp">
-            <div class="label">1. Проверка warp-cors</div>
+            <div class="label" data-i18n="steps.warp">1. Проверка warp-cors</div>
             <div class="status" id="st1">ожидание</div>
         </div>
         <div class="step" data-step="rename">
-            <div class="label">2. cfg → gcode (ws renameprt hack)</div>
+            <div class="label" data-i18n="steps.rename">2. cfg → gcode (ws renameprt hack)</div>
             <div class="status" id="st2">ожидание</div>
         </div>
         <div class="step" data-step="download">
-            <div class="label" id="stepDownloadLabel">3. Загрузка /downloads/gcode/*.cfg.gcode</div>
+            <div class="label" id="stepDownloadLabel" data-i18n="steps.download">3. Загрузка /downloads/gcode/*.cfg.gcode</div>
             <div class="status" id="st3">ожидание</div>
         </div>
         <div class="step" data-step="restore">
-            <div class="label">4. gcode → cfg (ws renameprt hack)</div>
+            <div class="label" data-i18n="steps.restore">4. gcode → cfg (ws renameprt hack)</div>
             <div class="status" id="st4">ожидание</div>
         </div>
     </div>
 
     <div id="editorWrap">
         <textarea id="cfg" style="display:none;background:#1e1e1e;color:#dcdcdc"></textarea>
-        <div id="placeholder" style="padding:24px;color:#999">Файл будет показан здесь после успешной загрузки</div>
-        <div id="loadingOverlay" class="hidden" style="position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center;color:#fff;font-size:14px">Загрузка...</div>
-        <div id="fwOverlay" class="hidden" style="position:fixed;left:0;right:0;top:0;bottom:0;background:rgba(0,0,0,0.85);z-index:99999;align-items:center;justify-content:center;color:#fff;font-size:16px;padding:20px;text-align:center">Klipper перезапускается — ожидание загрузки...</div>
+        <div id="placeholder" style="padding:24px;color:#999" data-i18n="placeholder">Файл будет показан здесь после успешной загрузки</div>
+        <div id="loadingOverlay" class="hidden" style="position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center;color:#fff;font-size:14px" data-i18n="loading">Загрузка...</div>
+        <div id="fwOverlay" class="hidden" style="position:fixed;left:0;right:0;top:0;bottom:0;background:rgba(0,0,0,0.85);z-index:99999;align-items:center;justify-content:center;color:#fff;font-size:16px;padding:20px;text-align:center" data-i18n="fwRestartOverlay">Klipper перезапускается — ожидание загрузки...</div>
         <div id="toast" class="hidden" style="position:fixed;left:50%;transform:translateX(-50%);bottom:20px;background:rgba(20,20,20,0.9);color:#fff;padding:8px 12px;border-radius:6px;font-size:13px;z-index:100000;box-shadow:0 4px 12px rgba(0,0,0,0.4)"></div>
     </div>
 
     <script>
         (function () {
+            // ===== i18n init (ru/en resources) =====
+            const I18N_RES = {
+                ru: {
+                  translation: {
+                    top: { title: 'Редактор', ws: 'WS: нет', bedMesh: 'Bed mesh', fwRestart: 'Перезапустить прошивку', save: 'Сохранить', lang: 'Язык' },
+                    notice: { corsTitle: 'Проблема CORS:', copyCmd: 'Скопировать команду', close: 'Закрыть' },
+                    warp: {
+                        noticeWarn: 'Прокси CORS (warp-cors) недоступен — это может блокировать загрузку на принтер.',
+                        runCmd: 'Запустите: {{cmd}}',
+                        runCmdWithHint: 'Запустите: {{cmd}} (замените <printer-ip> на IP вашего принтера)',
+                        explain: 'Браузер блокирует запросы к принтеру (другой хост) без специальных заголовков. Утилита-прокси временно добавляет их и не требует установки.',
+                        download: 'Скачать warp-cors (последний релиз)'
+                    },
+                    ws: {
+                        status: 'WS: {{text}}',
+                        connecting: 'подключение',
+                        connected: 'подключен',
+                        error: 'ошибка',
+                        closed: 'закрыт'
+                    },
+                    step: {
+                        check: 'проверка',
+                        wait: 'ожидание',
+                        ready: 'готов',
+                        running: 'выполняется',
+                        sent: 'отправлено',
+                        sendError: 'ошибка отправки',
+                        request: 'запрос...',
+                        success: 'успех',
+                        notFound: 'не найдено',
+                        error: 'ошибка'
+                    },
+                    toast: {
+                        copied: 'Команда скопирована',
+                        copyFail: 'Не удалось скопировать автоматически, скопируйте вручную',
+                        fwWaitError: 'Ошибка ожидания состояния принтера: {{error}}',
+                        warpMissing: 'warp-cors недоступен — запустите прокси на {{port}} порту.',
+                        sequenceStartError: 'Ошибка запуска сценария: {{error}}',
+                        enterIp: 'Введите IP принтера'
+                    },
+                    log: {
+                        downloadFail: 'Не удалось скачать файл с принтера.'
+                    },
+                    ip: { title: 'Введите IP принтера:', use: 'Использовать', close: 'Закрыть' },
+                    steps: { warp: '1. Проверка warp-cors', rename: '2. cfg → gcode (ws renameprt hack)', download: '3. Загрузка /downloads/gcode/*.cfg.gcode', restore: '4. gcode → cfg (ws renameprt hack)' },
+                    placeholder: 'Файл будет показан здесь после успешной загрузки',
+                    loading: 'Загрузка...',
+                    fwRestartOverlay: 'Klipper перезапускается — ожидание загрузки...'
+                  }
+                },
+                en: {
+                  translation: {
+                    top: { title: 'Editor', ws: 'WS: none', bedMesh: 'Bed mesh', fwRestart: 'Firmware restart', save: 'Save', lang: 'Language' },
+                    notice: { corsTitle: 'CORS Issue:', copyCmd: 'Copy command', close: 'Close' },
+                    warp: {
+                        noticeWarn: 'CORS proxy (warp-cors) unavailable — this may block printer uploads.',
+                        runCmd: 'Run: {{cmd}}',
+                        runCmdWithHint: 'Run: {{cmd}} (replace <printer-ip> with your printer IP)',
+                        explain: 'Browsers block requests to the printer (different host) without special headers. A tiny proxy tool temporarily adds them and requires no install.',
+                        download: 'Download warp-cors (latest release)'
+                    },
+                    ws: {
+                        status: 'WS: {{text}}',
+                        connecting: 'connecting',
+                        connected: 'connected',
+                        error: 'error',
+                        closed: 'closed'
+                    },
+                    step: {
+                        check: 'check',
+                        wait: 'waiting',
+                        ready: 'ready',
+                        running: 'running',
+                        sent: 'sent',
+                        sendError: 'send error',
+                        request: 'request...',
+                        success: 'success',
+                        notFound: 'not found',
+                        error: 'error'
+                    },
+                    toast: {
+                        copied: 'Command copied',
+                        copyFail: 'Failed to copy automatically, copy manually',
+                        fwWaitError: 'Error waiting for printer state: {{error}}',
+                        warpMissing: 'warp-cors unavailable — start the proxy on port {{port}}.',
+                        sequenceStartError: 'Sequence start error: {{error}}',
+                        enterIp: 'Enter printer IP'
+                    },
+                    log: {
+                        downloadFail: 'Failed to download file from printer.'
+                    },
+                    ip: { title: 'Enter printer IP:', use: 'Use', close: 'Close' },
+                    steps: { warp: '1. Check warp-cors', rename: '2. cfg → gcode (ws renameprt hack)', download: '3. Download /downloads/gcode/*.cfg.gcode', restore: '4. gcode → cfg (ws renameprt hack)' },
+                    placeholder: 'File will appear here after successful load',
+                    loading: 'Loading...',
+                    fwRestartOverlay: 'Klipper is restarting — waiting for load...'
+                  }
+                }
+            };
+
+            function applyTranslations(){
+                try{
+                    document.querySelectorAll('[data-i18n]').forEach(el => {
+                        const key = el.getAttribute('data-i18n');
+                        if (!key) return;
+                        const t = i18next.t(key);
+                        if (typeof t === 'string' && t) el.textContent = t;
+                    });
+                }catch(e){ console.warn('applyTranslations failed', e); }
+            }
+
+            // init i18next with inline resources
+            try{
+                const savedLang = (window.localStorage && window.localStorage.getItem && window.localStorage.getItem('cfgEditorLang')) || 'ru';
+                i18next.init({ lng: savedLang, fallbackLng: 'ru', resources: I18N_RES }).then(applyTranslations);
+                const langSel = document.getElementById('langSelect');
+                if (langSel){
+                    langSel.value = savedLang;
+                    langSel.addEventListener('change', ()=>{
+                        const lang = langSel.value || 'ru';
+                        try{ window.localStorage.setItem('cfgEditorLang', lang); }catch(e){}
+                        // Reload the page to ensure consistent UI state after language change
+                        location.reload();
+                    });
+                }
+            }catch(e){ console.warn('i18n init failed', e); }
             // ===== Helpers & Config =====
             // Константы конфигурации сети/таймингов
             const WARP_PORT = 8182;
@@ -351,18 +489,18 @@
 
                     text.innerHTML = '';
                     const warn = document.createElement('div');
-                    warn.textContent = 'Прокси CORS (warp-cors) недоступен — это может блокировать загрузку на принтер.';
+                    warn.textContent = i18next.t('warp.noticeWarn');
                     const cmdDiv = document.createElement('div');
                     cmdDiv.style.cssText = 'margin-top:6px;color:#2b2b2b';
-                    cmdDiv.textContent = savedHost ? `Запустите: ${cmd}` : `Запустите: ${cmd} (замените <printer-ip> на IP вашего принтера)`;
+                    cmdDiv.textContent = savedHost ? i18next.t('warp.runCmd', { cmd }) : i18next.t('warp.runCmdWithHint', { cmd });
                     const explain = document.createElement('div');
                     explain.style.cssText = 'font-size:12px;color:#444;margin-top:8px;line-height:1.4';
-                    explain.textContent = 'Почему возникает ошибка: браузер блокирует запросы к принтеру (другой хост) без специальных заголовков. Небольшая утилита-прокси временно добавляет их и не требует установки.';
+                    explain.textContent = i18next.t('warp.explain');
                     const linkWrap = document.createElement('div');
                     linkWrap.style.cssText = 'margin-top:6px;font-size:12px';
                     const a = document.createElement('a');
                     a.href = 'https://github.com/Bassetts/warp-cors/releases/latest';
-                    a.textContent = 'Скачать warp-cors (последний релиз)';
+                    a.textContent = i18next.t('warp.download');
                     a.target = '_blank';
                     a.rel = 'noopener noreferrer';
                     linkWrap.appendChild(a);
@@ -374,14 +512,14 @@
                     btnCopy.onclick = async ()=>{
                         try{
                             await navigator.clipboard.writeText(cmd);
-                            showToast('Команда скопирована');
+                            showToast(i18next.t('toast.copied'));
                         }catch(e){
                             const ta = document.createElement('textarea');
                             ta.value = cmd;
                             document.body.appendChild(ta);
                             ta.select();
-                            try{ document.execCommand('copy'); showToast('Команда скопирована'); }
-                            catch(err){ alert('Не удалось скопировать автоматически, скопируйте вручную: ' + cmd); }
+                            try{ document.execCommand('copy'); showToast(i18next.t('toast.copied')); }
+                            catch(err){ alert(i18next.t('toast.copyFail') + ': ' + cmd); }
                             document.body.removeChild(ta);
                         }
                     };
@@ -465,7 +603,11 @@
             /** Обновляет индикатор статуса WebSocket */
             function setWsStatus(text, color){
                 if (!wsStatusEl) return;
-                wsStatusEl.textContent = 'WS: ' + text + (wsReconnectAttempts>0 ? ` (попыток: ${wsReconnectAttempts})` : '');
+                const base = i18next.t('ws.status', { text });
+                const suffix = wsReconnectAttempts > 0
+                    ? ' ' + (i18next.language === 'ru' ? `(попыток: ${wsReconnectAttempts})` : `(attempts: ${wsReconnectAttempts})`)
+                    : '';
+                wsStatusEl.textContent = base + suffix;
                 wsStatusEl.style.color = color || '#888';
             }
 
@@ -507,7 +649,7 @@
                         // Otherwise create a new socket
                         const url = 'ws://' + host + ':' + WS_PORT;
                         wsReconnectAttempts += 1;
-                        setWsStatus('подключение', '#ff8');
+                        setWsStatus(i18next.t('ws.connecting'), '#ff8');
                         ws = new WebSocket(url);
 
                         let settled = false;
@@ -523,7 +665,7 @@
                         ws.onopen = () => {
                             wsOpen = true;
                             wsReconnectAttempts = 0;
-                            setWsStatus('подключен', '#8f8');
+                            setWsStatus(i18next.t('ws.connected'), '#8f8');
                             if (!settled) {
                                 settled = true;
                                 clearTimeout(tid);
@@ -543,7 +685,7 @@
                         ws.onerror = (e) => {
                             wsOpen = false;
                             console.warn('ws error', e);
-                            setWsStatus('ошибка', '#f88');
+                            setWsStatus(i18next.t('ws.error'), '#f88');
                             if (!settled) {
                                 settled = true;
                                 clearTimeout(tid);
@@ -552,7 +694,7 @@
                         };
                         ws.onclose = () => {
                             wsOpen = false;
-                            setWsStatus('закрыт', '#f88');
+                            setWsStatus(i18next.t('ws.closed'), '#f88');
                             // clear ws to allow a fresh reconnect later
                             try{ ws = null; }catch(e){}
                             // trigger auto-reconnect loop in background
@@ -581,7 +723,7 @@
                         scheduleWsReconnect();
                     });
                 }, delay);
-                setWsStatus('подключение', '#ff8');
+                setWsStatus(i18next.t('ws.connecting'), '#ff8');
             }
 
             /** Отправляет команду переименования через WS */
@@ -665,7 +807,7 @@
                         }catch(e){
                             showFirmwareOverlay(false);
                             btn.disabled = false;
-                            showToast('Ошибка ожидания состояния принтера: ' + e);
+                            showToast(i18next.t('toast.fwWaitError', { error: String(e) }));
                         }
                     });
                 }catch(e){ console.warn('setupFirmwareButton failed', e); }
@@ -723,25 +865,25 @@
             // ===== Orchestration: end-to-end sequence =====
             /** Основной сценарий: проверка прокси → переименовать → скачать → вернуть */
             async function runEditorSequence() {
-                setStepStatus(1, 'проверка', null);
-                setStepStatus(2, 'ожидание', null);
-                setStepStatus(3, 'ожидание', null);
-                setStepStatus(4, 'ожидание', null);
+                setStepStatus(1, i18next.t('step.check'), null);
+                setStepStatus(2, i18next.t('step.wait'), null);
+                setStepStatus(3, i18next.t('step.wait'), null);
+                setStepStatus(4, i18next.t('step.wait'), null);
 
                 const proxyOk = await ensureWarpProxyAvailability({ showNoticeOnFail: true });
                 if (!proxyOk) {
-                    setStepStatus(1, 'нет доступа', false);
-                    showToast(`warp-cors недоступен — запустите прокси на ${WARP_PORT} порту.`);
+                    setStepStatus(1, i18next.t('step.noAccess'), false);
+                    showToast(i18next.t('toast.warpMissing', { port: WARP_PORT }));
                     return;
                 }
-                setStepStatus(1, 'готов', true);
+                setStepStatus(1, i18next.t('step.ready'), true);
 
                 const cfg = getCfgObj();
-                setStepStatus(2, 'выполняется', null);
+                setStepStatus(2, i18next.t('step.running'), null);
                 const sent1 = await renameCfgToGcode(cfg);
-                setStepStatus(2, sent1 ? 'отправлено' : 'ошибка отправки', sent1);
+                setStepStatus(2, sent1 ? i18next.t('step.sent') : i18next.t('step.sendError'), sent1);
 
-                setStepStatus(3, 'запрос...', null);
+                setStepStatus(3, i18next.t('step.request'), null);
                 const lo = document.getElementById('loadingOverlay');
                 const hideLoading = () => { if (lo) { lo.classList.add('hidden'); lo.classList.remove('overlayFlex'); } };
                 if (lo) { lo.classList.remove('hidden'); lo.classList.add('overlayFlex'); }
@@ -750,21 +892,21 @@
                 const fileUrl = withProxy(proto + '//' + host + downloadPath);
                 const body = await pollFile(fileUrl, CONST.POLL_ATTEMPTS, CONST.POLL_INITIAL_DELAY);
                 if (body !== null) {
-                    setStepStatus(3, 'успех', true);
+                    setStepStatus(3, i18next.t('step.success'), true);
                     initEditor(body);
                     fileText = body;
                     btnSave.disabled = false;
                     // сохранить снимок после успешной загрузки
                     try{ saveSnapshot(cfg.name, body); }catch(e){}
                 } else {
-                    setStepStatus(3, 'не найдено', false);
+                    setStepStatus(3, i18next.t('step.notFound'), false);
                     hideLoading();
-                    console.warn('Не удалось скачать файл с принтера.');
+                    console.warn(i18next.t('log.downloadFail'));
                 }
 
-                setStepStatus(4, 'выполнение', null);
+                setStepStatus(4, i18next.t('step.running'), null);
                 const sent3 = await renameGcodeToCfg(cfg);
-                setStepStatus(4, sent3 ? 'отправлено' : 'ошибка', sent3);
+                setStepStatus(4, sent3 ? i18next.t('step.sent') : i18next.t('step.error'), sent3);
             }
 
             // populate cfg select UI and initial run
@@ -786,7 +928,7 @@
                         try{ window.localStorage.setItem('cfgEditorSelectedCfg', selectedCfgName); }catch(e){}
                         updateCfgTitle();
                         // restart sequence for newly selected cfg
-                        runEditorSequence().catch(e=>{ console.error('runEditorSequence failed', e); showToast('Ошибка запуска сценария: '+e); });
+                        runEditorSequence().catch(e=>{ console.error('runEditorSequence failed', e); showToast(i18next.t('toast.sequenceStartError', { error: String(e) })); });
                     });
                 }catch(e){ console.warn('populateCfgSelect failed', e); }
             }
@@ -806,7 +948,7 @@
             populateCfgSelect();
             // Запускаем сценарий ТОЛЬКО если известен IP принтера
             if (host) {
-                runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast('Ошибка запуска сценария: '+e); });
+                runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast(i18next.t('toast.sequenceStartError', { error: String(e) })); });
             }
 
             // If page is opened via file:// or running on localhost, prompt user to enter printer IP
@@ -830,13 +972,13 @@
 
                     btnUse.addEventListener('click', ()=>{
                         const v = input.value.trim();
-                        if (!v) { showToast('Введите IP принтера'); return; }
+                        if (!v) { showToast(i18next.t('toast.enterIp')); return; }
                         host = v;
                         try{ window.localStorage.setItem('cfgEditorPrinterHost', v); }catch(e){}
                         document.getElementById('hostDisplay').textContent = host;
                         promptEl.style.display = 'none';
                         // запустить сценарий после указания IP
-                        runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast('Ошибка запуска сценария: '+e); });
+                        runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast(i18next.t('toast.sequenceStartError', { error: String(e) })); });
                     });
 
                     btnDismiss.addEventListener('click', ()=>{ promptEl.style.display = 'none'; });
