@@ -214,7 +214,10 @@
             // List of available configs (user-provided). Each entry has {name,path}
             const CFG_LIST = [
                 { name: 'printer.cfg', path: '/usr/data/printer_data/config/' },
-                { name: 'factory_printer.cfg', path: '/usr/data/printer_data/config/' }
+                { name: 'factory_printer.cfg', path: '/usr/data/printer_data/config/' },
+                { name: 'printer_params.cfg', path: '/usr/data/printer_data/config/' },
+                { name: 'sensorless.cfg', path: '/usr/data/printer_data/config/' },
+                { name: 'gcode_macro.cfg', path: '/usr/data/printer_data/config/' }
             ];
 
             // Selected config name (persisted)
@@ -264,6 +267,46 @@
             let ws = null;
             let wsOpen = false;
             let wsReconnectAttempts = 0;
+
+            // ===== Local snapshots (backup history) =====
+            /** Сохраняет снимок конфигурации в localStorage: {name, dateIso, content}
+             *  Если уже есть запись с тем же name+content — просто обновляет дату и переносит её в начало. */
+            function saveSnapshot(cfgName, content){
+                try{
+                    const key = 'cfgEditorSnapshots';
+                    const MAX_ITEMS = 20; // ограничим историю
+                    const nowIso = new Date().toISOString();
+                    let arr = [];
+                    try{ const raw = window.localStorage.getItem(key); if (raw) arr = JSON.parse(raw) || []; }catch(e){}
+
+                    // найти идентичный снимок (имя + содержимое)
+                    const idx = arr.findIndex(s => s && s.name === cfgName && s.content === content);
+                    if (idx >= 0){
+                        // обновить дату и переместить в начало
+                        const existing = arr.splice(idx, 1)[0];
+                        existing.dateIso = nowIso;
+                        arr.unshift(existing);
+                    } else {
+                        // добавить новый в начало
+                        arr.unshift({ name: cfgName, dateIso: nowIso, content });
+                        if (arr.length > MAX_ITEMS) arr = arr.slice(0, MAX_ITEMS);
+                    }
+
+                    window.localStorage.setItem(key, JSON.stringify(arr));
+                    console.log('Snapshot saved:', cfgName, nowIso, idx >= 0 ? '(refresh)' : '(new)');
+                }catch(e){ console.warn('saveSnapshot failed', e); }
+            }
+            /** Возвращает массив снимков */
+            function getSnapshots(){
+                try{ const raw = window.localStorage.getItem('cfgEditorSnapshots'); return raw ? (JSON.parse(raw) || []) : []; }
+                catch(e){ return []; }
+            }
+            /** Находит последний снимок по имени конфига */
+            function getLatestSnapshotByName(cfgName){
+                const arr = getSnapshots();
+                for (const s of arr){ if (s && s.name === cfgName) return s; }
+                return null;
+            }
 
             function showWarpNotice(){
                 try{
@@ -711,6 +754,8 @@
                     initEditor(body);
                     fileText = body;
                     btnSave.disabled = false;
+                    // сохранить снимок после успешной загрузки
+                    try{ saveSnapshot(cfg.name, body); }catch(e){}
                 } else {
                     setStepStatus(3, 'не найдено', false);
                     hideLoading();
@@ -818,6 +863,8 @@
                     }
 
                     const content = cm.getValue();
+                    // перед загрузкой тоже сохраним локальную копию как точку отката
+                    try{ const cfgName = getCfgObj().name; saveSnapshot(cfgName, content); }catch(e){}
                     const cfg = getCfgObj();
                     const uploadUrl = buildUploadUrl(host, cfg);
                     const res = await uploadFile(uploadUrl, gcodeFilename(cfg.name), content);
