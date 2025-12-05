@@ -250,7 +250,11 @@
                         fwWaitError: 'Ошибка ожидания состояния принтера: {{error}}',
                         warpMissing: 'warp-cors недоступен — запустите прокси на {{port}} порту.',
                         sequenceStartError: 'Ошибка запуска сценария: {{error}}',
-                        enterIp: 'Введите IP принтера'
+                        enterIp: 'Введите IP принтера',
+                        bedMeshNotFound: 'Раздел [bed_mesh default] не найден',
+                        configEmpty: 'Конфиг не загружен или пуст',
+                        bedMeshPointsNotFound: 'Точки bed_mesh не найдены',
+                        bedMeshExtractError: 'Ошибка извлечения bed_mesh: {{error}}'
                     },
                     log: {
                         downloadFail: 'Не удалось скачать файл с принтера.'
@@ -298,7 +302,11 @@
                         fwWaitError: 'Error waiting for printer state: {{error}}',
                         warpMissing: 'warp-cors unavailable — start the proxy on port {{port}}.',
                         sequenceStartError: 'Sequence start error: {{error}}',
-                        enterIp: 'Enter printer IP'
+                        enterIp: 'Enter printer IP',
+                        bedMeshNotFound: 'Section [bed_mesh default] not found',
+                        configEmpty: 'Config not loaded or is empty',
+                        bedMeshPointsNotFound: 'No bed_mesh points found',
+                        bedMeshExtractError: 'Bed_mesh extraction error: {{error}}'
                     },
                     log: {
                         downloadFail: 'Failed to download file from printer.'
@@ -405,6 +413,24 @@
             let ws = null;
             let wsOpen = false;
             let wsReconnectAttempts = 0;
+
+            // ensure Save is disabled until there are changes
+            try{ if (btnSave) btnSave.disabled = true; }catch(e){}
+
+            function normalizeText(s){
+                try{ return String(s == null ? '' : s).replace(/\r\n/g, '\n'); }catch(e){ return ''; }
+            }
+
+            function hasUnsavedChanges(){
+                try{
+                    if (!cm) return false;
+                    const base = (typeof fileText === 'string') ? fileText : '';
+                    return normalizeText(cm.getValue()) !== normalizeText(base);
+                }catch(e){ return false; }
+            }
+            function updateSaveButton(){
+                try{ if (btnSave) btnSave.disabled = !hasUnsavedChanges(); }catch(e){}
+            }
 
             // ===== Local snapshots (backup history) =====
             /** Сохраняет снимок конфигурации в localStorage: {name, dateIso, content}
@@ -857,11 +883,13 @@
                         viewportMargin: Infinity
                     });
                     cm.getWrapperElement().style.height = '100%';
-                    cm.on('change', () => { btnSave.disabled = false; });
+                    cm.on('change', () => { updateSaveButton(); });
                     try{ cm.refresh(); }catch(e){}
                 }
                 // hide loading overlay if present
                 const lo = document.getElementById('loadingOverlay'); if (lo) { lo.classList.add('hidden'); lo.classList.remove('overlayFlex'); }
+                // reflect current baseline after setting editor text
+                updateSaveButton();
             }
 
             // ===== Orchestration: end-to-end sequence =====
@@ -896,8 +924,8 @@
                 if (body !== null) {
                     setStepStatus(3, i18next.t('step.success'), true);
                     initEditor(body);
-                    fileText = body;
-                    btnSave.disabled = false;
+                    fileText = normalizeText(body);
+                    updateSaveButton();
                     // сохранить снимок после успешной загрузки
                     try{ saveSnapshot(cfg.name, body); }catch(e){}
                 } else {
@@ -929,6 +957,7 @@
                         selectedCfgName = sel.value;
                         try{ window.localStorage.setItem('cfgEditorSelectedCfg', selectedCfgName); }catch(e){}
                         updateCfgTitle();
+                        try{ updateBedMeshVisibility(); }catch(e){}
                         // restart sequence for newly selected cfg
                         runEditorSequence().catch(e=>{ console.error('runEditorSequence failed', e); showToast(i18next.t('toast.sequenceStartError', { error: String(e) })); });
                     });
@@ -947,7 +976,17 @@
                 }catch(e){ console.warn('updateCfgTitle failed', e); }
             }
 
+            function updateBedMeshVisibility(){
+                try{
+                    const btn = document.getElementById('btnBedMesh');
+                    if (!btn) return;
+                    const isPrinterCfg = (getCfgObj().name === 'printer.cfg');
+                    btn.style.display = isPrinterCfg ? '' : 'none';
+                }catch(e){ console.warn('updateBedMeshVisibility failed', e); }
+            }
+
             populateCfgSelect();
+            try{ updateBedMeshVisibility(); }catch(e){}
             // Запускаем сценарий ТОЛЬКО если известен IP принтера
             if (host) {
                 runEditorSequence().catch(e => { console.error('runEditorSequence failed', e); showToast(i18next.t('toast.sequenceStartError', { error: String(e) })); });
@@ -1023,6 +1062,9 @@
                     const renamed = await renameGcodeToCfg(cfg);
                     if (renamed) {
                         setStepStatus(4, 'перенесено', true);
+                        // update baseline to saved content
+                        fileText = content;
+                        updateSaveButton();
                     } else {
                         setStepStatus(4, 'ошибка переименования', false);
                         showToast('Файл загружен, но не удалось вернуть cfg.');
@@ -1032,7 +1074,7 @@
                     setStepStatus(4, 'ошибка', false);
                     showToast('Ошибка сохранения: ' + e);
                 }finally{
-                    btnSave.disabled = false;
+                    updateSaveButton();
                 }
             });
 
@@ -1043,7 +1085,7 @@
                     let content = '';
                     if (cm) content = cm.getValue();
                     if (!content) content = (typeof fileText === 'string') ? fileText : '';
-                    if (!content || !content.trim()) { showToast('Конфиг не загружен или пуст'); return; }
+                    if (!content || !content.trim()) { showToast(i18next.t('toast.configEmpty')); return; }
 
                     const lines = content.split(/\r?\n/);
                     // find start of bed_mesh section (line that contains [bed_mesh default], possibly commented with #*#)
@@ -1055,7 +1097,7 @@
                     for (let i=0;i<lines.length;i++){
                         if (startRe.test(lines[i])) { start = i; break; }
                     }
-                    if (start === -1) { showToast('Раздел [bed_mesh default] не найден'); return; }
+                    if (start === -1) { showToast(i18next.t('toast.bedMeshNotFound')); return; }
 
                     const matrix = [];
                     for (let j = start+1; j < lines.length; j++){
@@ -1069,7 +1111,7 @@
                         }
                     }
 
-                    if (matrix.length === 0) { showToast('Точки bed_mesh не найдены'); return; }
+                    if (matrix.length === 0) { showToast(i18next.t('toast.bedMeshPointsNotFound')); return; }
 
                     // Show result: log and open modal graph
                     console.log('Bed mesh: %d rows extracted', matrix.length);
@@ -1089,7 +1131,7 @@
 
                     showMeshModal(matrix, bounds);
 
-                }catch(e){ console.error('Bed mesh extraction failed', e); showToast('Ошибка извлечения bed_mesh: '+e); }
+                }catch(e){ console.error('Bed mesh extraction failed', e); showToast(i18next.t('toast.bedMeshExtractError', { error: String(e) })); }
             });
 
             // Modal and draw utilities
